@@ -1,6 +1,11 @@
-@OpenNet.Server_HostAddress = http://localhost:5232
+﻿@OpenNet.Server_HostAddress = http://localhost:5090
 
-GET {{OpenNet.Server_HostAddress}}/weatherforecast/
+GET {{OpenNet.Server_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{OpenNet.Server_HostAddress}}/api/v1/traversal/servers
 Accept: application/json
 
 ###

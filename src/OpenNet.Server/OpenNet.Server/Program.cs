@@ -1,34 +1,65 @@
+using Microsoft.EntityFrameworkCore;
+using OpenNet.Server.Application;
+using OpenNet.Server.Infrastructure;
+using OpenNet.Server.Options;
 
-namespace OpenNet.Server
+namespace OpenNet.Server;
+
+public static class Program
 {
-    public class Program
+    public static async Task Main(string[] args)
     {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
+        builder.Services
+            .AddOptions<TraversalDirectoryOptions>()
+            .BindConfiguration(TraversalDirectoryOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
-            builder.Services.AddControllers();
-            // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-            builder.Services.AddOpenApi();
+        string connectionString = builder.Configuration.GetConnectionString("TraversalDirectory")
+            ?? "Data Source=opennet-server.db";
+        string databaseProvider =
+            builder.Configuration["DatabaseProvider"] ?? "Sqlite";
 
-            var app = builder.Build();
-
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
+        builder.Services.AddDbContext<TraversalDbContext>(
+            options =>
             {
-                app.MapOpenApi();
-            }
+                if (databaseProvider.Equals("MySql", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.UseMySQL(connectionString);
+                }
+                else if (databaseProvider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.UseSqlite(connectionString);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Unsupported DatabaseProvider '{databaseProvider}'. "
+                        + "Use 'Sqlite' or 'MySql'.");
+                }
+            });
+        builder.Services.AddScoped<ITraversalServerRepository, TraversalServerRepository>();
+        builder.Services.AddScoped<TraversalDirectoryService>();
+        builder.Services.AddMemoryCache();
+        builder.Services.AddHealthChecks()
+            .AddDbContextCheck<TraversalDbContext>("traversal-database");
+        builder.Services.AddControllers();
+        builder.Services.AddOpenApi();
 
-            app.UseHttpsRedirection();
+        WebApplication app = builder.Build();
 
-            app.UseAuthorization();
-
-
-            app.MapControllers();
-
-            app.Run();
+        if (app.Environment.IsDevelopment())
+        {
+            app.MapOpenApi();
         }
+
+        app.UseHttpsRedirection();
+        app.MapControllers();
+        app.MapHealthChecks("/health");
+
+        await TraversalDatabaseInitializer.InitializeAsync(app.Services);
+        await app.RunAsync();
     }
 }
