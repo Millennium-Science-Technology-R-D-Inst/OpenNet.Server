@@ -49,20 +49,35 @@ dotnet run --project src/OpenNet.Server/OpenNet.Server/OpenNet.Server.csproj --u
 
 ## Docker Compose
 
-仓库根目录提供 ASP.NET Core 10 + MySQL 8.4 的 Compose 配置：
+默认 `compose.yaml` 只启动 ASP.NET Core Server，并连接 Linux 宿主机上已经
+安装的 MySQL。`host.docker.internal` 通过 `host-gateway` 映射到宿主机：
 
 ```sh
 cp .env.example .env
-# 编辑 .env 中的三个密钥
+# 编辑 MySQL 地址、账号、密码和 OPENNET_MANAGEMENT_API_KEY
 docker compose up --build -d
 docker compose ps
+docker compose logs server
 curl http://127.0.0.1:5090/health
 curl http://127.0.0.1:5090/api/v1/traversal/servers
 ```
 
-MySQL 数据保存在 `opennet-mysql` volume。应用容器通过服务名 `mysql`
-连接数据库，宿主机无需公开 3306。公网部署时建议让 Nginx/Caddy 终止 HTTPS，
-只将应用的 5090 端口暴露给反向代理。
+宿主机 MySQL 不能只监听 `127.0.0.1`；应监听 Docker bridge 可达的地址，
+并授权 `opennet` 用户从容器网段连接。只应在宿主机防火墙中允许 Docker
+bridge 网段访问 3306，不要向公网开放 MySQL。
+
+如果某台机器没有自己的 MySQL，可叠加可选配置启动 MySQL 8.4 容器：
+
+```sh
+docker compose \
+  -f compose.yaml \
+  -f compose.mysql.yaml \
+  up --build -d
+```
+
+该模式的 MySQL 数据保存在 `opennet-mysql` volume，应用通过服务名 `mysql`
+连接数据库。公网部署时建议让 Nginx/Caddy 终止 HTTPS，只将应用的 5090
+端口暴露给反向代理。
 
 ## 与 Traversal 节点连接
 
