@@ -76,8 +76,19 @@ docker compose \
 ```
 
 该模式的 MySQL 数据保存在 `opennet-mysql` volume，应用通过服务名 `mysql`
-连接数据库。公网部署时建议让 Nginx/Caddy 终止 HTTPS，只将应用的 5090
-端口暴露给反向代理。
+连接数据库。MySQL 默认只发布为宿主机的 `127.0.0.1:13306`。推荐从外部机器
+建立 SSH 隧道后再连接：
+
+```sh
+ssh -L 13306:127.0.0.1:13306 <linux-user>@<server-ip>
+mysql -h 127.0.0.1 -P 13306 -u opennet -p opennet
+```
+
+如果服务器和客户端位于可信的局域网或 VPN，可在 `.env` 中将
+`MYSQL_PUBLISH_ADDRESS` 设置为服务器的局域网/VPN 地址，并仅向指定客户端
+IP 放行 `MYSQL_PUBLISHED_PORT`。不建议把它设置为 `0.0.0.0` 并向公网开放。
+
+公网部署时建议让 Nginx/Caddy 终止 HTTPS，只将应用的 5090 端口暴露给反向代理。
 
 ## 与 Traversal 节点连接
 

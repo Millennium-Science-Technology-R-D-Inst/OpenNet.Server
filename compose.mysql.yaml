@@ -2,6 +2,8 @@ services:
   mysql:
     image: mysql:8.4
     restart: unless-stopped
+    ports:
+      - "${MYSQL_PUBLISH_ADDRESS:-127.0.0.1}:${MYSQL_PUBLISHED_PORT:-13306}:3306"
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-opennet}
       MYSQL_USER: ${MYSQL_USER:-opennet}
