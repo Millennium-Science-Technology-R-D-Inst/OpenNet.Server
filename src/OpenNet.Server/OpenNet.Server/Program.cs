@@ -16,6 +16,14 @@ public static class Program
             .BindConfiguration(TraversalDirectoryOptions.SectionName)
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        builder.Services
+            .AddOptions<UpdateCatalogOptions>()
+            .BindConfiguration(UpdateCatalogOptions.SectionName)
+            .ValidateDataAnnotations()
+            .Validate(
+                options => options.HasValidPackages(),
+                "Every update package and mirror must satisfy the update catalog schema.")
+            .ValidateOnStart();
 
         string connectionString = builder.Configuration.GetConnectionString("TraversalDirectory")
             ?? "Data Source=opennet-server.db";
@@ -42,6 +50,7 @@ public static class Program
             });
         builder.Services.AddScoped<ITraversalServerRepository, TraversalServerRepository>();
         builder.Services.AddScoped<TraversalDirectoryService>();
+        builder.Services.AddSingleton<UpdateCatalogService>();
         builder.Services.AddMemoryCache();
         builder.Services.AddHealthChecks()
             .AddDbContextCheck<TraversalDbContext>("traversal-database");

@@ -9,3 +9,7 @@ GET {{OpenNet.Server_HostAddress}}/api/v1/traversal/servers
 Accept: application/json
 
 ###
+GET {{OpenNet.Server_HostAddress}}/api/v1/update/latest?channel=stable&architecture=x64&packageType=installer
+Accept: application/json
+
+###
