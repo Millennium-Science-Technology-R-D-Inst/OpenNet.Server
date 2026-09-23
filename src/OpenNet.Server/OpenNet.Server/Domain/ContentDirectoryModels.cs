@@ -18,7 +18,8 @@ public enum ContentPeerTransport : byte
 
 public enum ResourceKeyAlgorithm : short
 {
-    ExactUrlSha256V1 = 1
+    ExactUrlSha256V1 = 1,
+    HttpValidatorSha256V1 = 2
 }
 
 public sealed class ContentNode
@@ -100,6 +101,7 @@ public static class ResourceKeyRules
     public static int ExpectedDigestBytes(ResourceKeyAlgorithm algorithm) => algorithm switch
     {
         ResourceKeyAlgorithm.ExactUrlSha256V1 => 32,
+        ResourceKeyAlgorithm.HttpValidatorSha256V1 => 32,
         _ => 0
     };
 
