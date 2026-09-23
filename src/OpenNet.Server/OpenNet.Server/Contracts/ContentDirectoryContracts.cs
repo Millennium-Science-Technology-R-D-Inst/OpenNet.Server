@@ -123,3 +123,36 @@ public sealed class CompleteContentWakeupRequest
     [StringLength(512)]
     public string? Error { get; init; }
 }
+
+
+public sealed class ResourceKeyContract
+{
+    public int Algorithm { get; init; }
+
+    [Required]
+    [StringLength(128, MinimumLength = 1)]
+    public string Digest { get; init; } = string.Empty;
+}
+
+public sealed class ResourceAnnouncementRequest
+{
+    public Guid LeaseId { get; init; }
+
+    [Required]
+    public ResourceKeyContract ResourceKey { get; init; } = new();
+
+    [Required]
+    public ContentIdentityContract ContentIdentity { get; init; } = new();
+}
+
+public sealed record ResourceCandidateResponse(
+    Guid ContentId,
+    long Size,
+    int ObservationCount,
+    DateTimeOffset LastObservedUtc,
+    IReadOnlyList<ContentIdentityContract> Identities);
+
+public sealed record ResourceLookupResponse(
+    ResourceKeyContract ResourceKey,
+    DateTimeOffset GeneratedAtUtc,
+    IReadOnlyList<ResourceCandidateResponse> Candidates);

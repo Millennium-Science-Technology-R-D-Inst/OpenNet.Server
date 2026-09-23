@@ -12,6 +12,7 @@ public sealed class ContentDirectoryDbContext(DbContextOptions<ContentDirectoryD
     public DbSet<ContentObject> Contents => Set<ContentObject>();
     public DbSet<ContentIdentityRecord> ContentIdentities => Set<ContentIdentityRecord>();
     public DbSet<ContentPresence> ContentPresences => Set<ContentPresence>();
+    public DbSet<ResourceObservation> ResourceObservations => Set<ResourceObservation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -109,6 +110,40 @@ public sealed class ContentDirectoryDbContext(DbContextOptions<ContentDirectoryD
             entity.HasOne(presence => presence.Content)
                 .WithMany(content => content.Presences)
                 .HasForeignKey(presence => presence.ContentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ResourceObservation>(entity =>
+        {
+            entity.ToTable("ResourceObservations");
+            entity.HasKey(observation => new
+            {
+                observation.Algorithm,
+                observation.DigestHex,
+                observation.NodeId
+            });
+            entity.Property(observation => observation.Algorithm)
+                .HasConversion<short>();
+            entity.Property(observation => observation.DigestHex)
+                .HasMaxLength(64)
+                .IsRequired();
+            entity.Property(observation => observation.ObservedUtc)
+                .HasConversion(utcInstant);
+            entity.Property(observation => observation.ExpiresUtc)
+                .HasConversion(utcInstant);
+            entity.HasIndex(observation => new
+            {
+                observation.Algorithm,
+                observation.DigestHex,
+                observation.ExpiresUtc
+            });
+            entity.HasIndex(observation => observation.ContentId);
+            entity.HasOne(observation => observation.Node)
+                .WithMany(node => node.ResourceObservations)
+                .HasForeignKey(observation => observation.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(observation => observation.Content)
+                .WithMany(content => content.ResourceObservations)
+                .HasForeignKey(observation => observation.ContentId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

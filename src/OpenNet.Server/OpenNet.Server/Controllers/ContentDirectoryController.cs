@@ -162,4 +162,68 @@ public sealed class ContentDirectoryController(ContentDirectoryService directory
             : File(manifest, "application/x-bittorrent");
     }
 
+
+    [HttpPost("nodes/{nodeId}/resources")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> AnnounceResource(
+        string nodeId,
+        [FromBody] ResourceAnnouncementRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            bool announced = await directory.AnnounceResourceAsync(
+                nodeId,
+                request,
+                cancellationToken);
+            return announced ? NoContent() : NotFound();
+        }
+        catch (ContentDirectoryConflictException exception)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Resource announcement conflict",
+                Detail = exception.Message
+            });
+        }
+        catch (ArgumentException exception)
+        {
+            ModelState.AddModelError(
+                exception.ParamName ?? string.Empty,
+                exception.Message);
+            return ValidationProblem(ModelState);
+        }
+    }
+
+    [HttpGet("resources/lookup")]
+    [ProducesResponseType<ResourceLookupResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ResourceLookupResponse>> LookupResource(
+        [FromQuery] int algorithm,
+        [FromQuery] string digest,
+        [FromQuery] int? maxCandidates,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            ResourceLookupResponse? response =
+                await directory.LookupResourceAsync(
+                    algorithm,
+                    digest,
+                    maxCandidates,
+                    cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            ModelState.AddModelError(
+                exception.ParamName ?? string.Empty,
+                exception.Message);
+            return ValidationProblem(ModelState);
+        }
+    }
+
 }

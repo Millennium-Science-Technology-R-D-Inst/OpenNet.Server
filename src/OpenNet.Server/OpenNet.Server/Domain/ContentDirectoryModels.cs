@@ -16,6 +16,11 @@ public enum ContentPeerTransport : byte
     Utp = 2
 }
 
+public enum ResourceKeyAlgorithm : short
+{
+    ExactUrlSha256V1 = 1
+}
+
 public sealed class ContentNode
 {
     public required string NodeId { get; set; }
@@ -27,6 +32,7 @@ public sealed class ContentNode
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<ContentNodeEndpoint> Endpoints { get; set; } = [];
     public ICollection<ContentPresence> Presences { get; set; } = [];
+    public ICollection<ResourceObservation> ResourceObservations { get; set; } = [];
 }
 
 public sealed class ContentNodeEndpoint
@@ -50,6 +56,7 @@ public sealed class ContentObject
     public byte[]? CanonicalTorrent { get; set; }
     public ICollection<ContentIdentityRecord> Identities { get; set; } = [];
     public ICollection<ContentPresence> Presences { get; set; } = [];
+    public ICollection<ResourceObservation> ResourceObservations { get; set; } = [];
 }
 
 public sealed class ContentIdentityRecord
@@ -73,6 +80,49 @@ public sealed class ContentPresence
     public DateTimeOffset? NextWakeAllowedUtc { get; set; }
     public DateTimeOffset? SeedReadyUntilUtc { get; set; }
     public DateTimeOffset UpdatedUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+
+public sealed class ResourceObservation
+{
+    public ResourceKeyAlgorithm Algorithm { get; set; }
+    public required string DigestHex { get; set; }
+    public required string NodeId { get; set; }
+    public ContentNode Node { get; set; } = null!;
+    public Guid ContentId { get; set; }
+    public ContentObject Content { get; set; } = null!;
+    public DateTimeOffset ObservedUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset ExpiresUtc { get; set; }
+}
+
+public static class ResourceKeyRules
+{
+    public static int ExpectedDigestBytes(ResourceKeyAlgorithm algorithm) => algorithm switch
+    {
+        ResourceKeyAlgorithm.ExactUrlSha256V1 => 32,
+        _ => 0
+    };
+
+    public static string NormalizeDigest(ResourceKeyAlgorithm algorithm, string digestHex)
+    {
+        int expectedBytes = ExpectedDigestBytes(algorithm);
+        if (expectedBytes == 0)
+        {
+            throw new ArgumentException(
+                $"Unsupported resource-key algorithm {(short)algorithm}.",
+                nameof(algorithm));
+        }
+
+        string normalized = digestHex.Trim().ToLowerInvariant();
+        if (normalized.Length != expectedBytes * 2 || !normalized.All(Uri.IsHexDigit))
+        {
+            throw new ArgumentException(
+                $"Digest for {algorithm} must contain exactly {expectedBytes * 2} hexadecimal characters.",
+                nameof(digestHex));
+        }
+
+        return normalized;
+    }
 }
 
 public static class ContentIdentityRules

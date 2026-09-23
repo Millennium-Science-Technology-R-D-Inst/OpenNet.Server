@@ -28,21 +28,35 @@ public sealed class ContentDirectoryCleanupService(
                     scope.ServiceProvider.GetRequiredService<ContentDirectoryDbContext>();
 
                 DateTimeOffset now = DateTimeOffset.UtcNow;
+                List<ResourceObservation> expiredResources =
+                    await db.ResourceObservations
+                        .Where(observation => observation.ExpiresUtc <= now)
+                        .ToListAsync(stoppingToken);
+                if (expiredResources.Count != 0)
+                {
+                    db.ResourceObservations.RemoveRange(expiredResources);
+                }
+
                 List<ContentNode> expiredNodes = await db.ContentNodes
                     .Where(node => node.LeaseExpiresUtc <= now)
                     .ToListAsync(stoppingToken);
 
-                if (expiredNodes.Count == 0)
+                if (expiredNodes.Count != 0)
+                {
+                    db.ContentNodes.RemoveRange(expiredNodes);
+                }
+
+                if (expiredNodes.Count == 0 && expiredResources.Count == 0)
                 {
                     continue;
                 }
 
-                db.ContentNodes.RemoveRange(expiredNodes);
                 await db.SaveChangesAsync(stoppingToken);
 
                 logger.LogDebug(
-                    "Removed {ExpiredNodeCount} expired content-directory nodes.",
-                    expiredNodes.Count);
+                    "Removed {ExpiredNodeCount} expired content-directory nodes and {ExpiredResourceCount} expired resource observations.",
+                    expiredNodes.Count,
+                    expiredResources.Count);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

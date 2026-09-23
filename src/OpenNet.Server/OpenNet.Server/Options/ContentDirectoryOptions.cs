@@ -29,4 +29,13 @@ public sealed class ContentDirectoryOptions
 
     [Range(1024, 64 * 1024 * 1024)]
     public int MaxCanonicalTorrentBytes { get; init; } = 8 * 1024 * 1024;
+
+    [Range(60, 30 * 24 * 60 * 60)]
+    public int ResourceHintLifetimeSeconds { get; init; } = 7 * 24 * 60 * 60;
+
+    [Range(1, 32)]
+    public int MaxResourceCandidates { get; init; } = 8;
+
+    [Range(1, 1024)]
+    public int MaxResourceObservationsPerLookup { get; init; } = 256;
 }

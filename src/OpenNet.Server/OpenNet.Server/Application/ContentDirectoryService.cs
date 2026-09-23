@@ -570,6 +570,156 @@ public sealed class ContentDirectoryService(
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+
+    public async Task<bool> AnnounceResourceAsync(
+        string nodeId,
+        ResourceAnnouncementRequest request,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        ContentNode? node = await dbContext.ContentNodes
+            .SingleOrDefaultAsync(item => item.NodeId == nodeId, cancellationToken);
+        if (node is null
+            || node.LeaseId != request.LeaseId
+            || node.LeaseExpiresUtc <= now)
+        {
+            return false;
+        }
+
+        ResourceKeyAlgorithm resourceAlgorithm =
+            (ResourceKeyAlgorithm)request.ResourceKey.Algorithm;
+        string resourceDigest = ResourceKeyRules.NormalizeDigest(
+            resourceAlgorithm,
+            request.ResourceKey.Digest);
+
+        ContentIdentityAlgorithm contentAlgorithm =
+            (ContentIdentityAlgorithm)request.ContentIdentity.Algorithm;
+        string contentDigest = ContentIdentityRules.NormalizeDigest(
+            contentAlgorithm,
+            request.ContentIdentity.Digest);
+
+        ContentIdentityRecord? identity = await dbContext.ContentIdentities
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                item => item.Algorithm == contentAlgorithm
+                    && item.DigestHex == contentDigest,
+                cancellationToken);
+        if (identity is null)
+        {
+            throw new ContentDirectoryConflictException(
+                "The announced content identity is not registered.");
+        }
+
+        bool nodeOwnsContent = await dbContext.ContentPresences
+            .AsNoTracking()
+            .AnyAsync(
+                presence => presence.NodeId == nodeId
+                    && presence.ContentId == identity.ContentId,
+                cancellationToken);
+        if (!nodeOwnsContent)
+        {
+            throw new ContentDirectoryConflictException(
+                "The node cannot announce a resource mapping for content outside its current inventory.");
+        }
+
+        ResourceObservation? observation = await dbContext.ResourceObservations
+            .SingleOrDefaultAsync(
+                item => item.Algorithm == resourceAlgorithm
+                    && item.DigestHex == resourceDigest
+                    && item.NodeId == nodeId,
+                cancellationToken);
+
+        if (observation is null)
+        {
+            observation = new ResourceObservation
+            {
+                Algorithm = resourceAlgorithm,
+                DigestHex = resourceDigest,
+                NodeId = nodeId
+            };
+            dbContext.ResourceObservations.Add(observation);
+        }
+
+        observation.ContentId = identity.ContentId;
+        observation.ObservedUtc = now;
+        observation.ExpiresUtc =
+            now.AddSeconds(directoryOptions.ResourceHintLifetimeSeconds);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<ResourceLookupResponse?> LookupResourceAsync(
+        int algorithmValue,
+        string digest,
+        int? requestedMaxCandidates,
+        CancellationToken cancellationToken)
+    {
+        ResourceKeyAlgorithm algorithm = (ResourceKeyAlgorithm)algorithmValue;
+        string normalizedDigest = ResourceKeyRules.NormalizeDigest(
+            algorithm,
+            digest);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        int maxCandidates = Math.Clamp(
+            requestedMaxCandidates ?? directoryOptions.MaxResourceCandidates,
+            1,
+            directoryOptions.MaxResourceCandidates);
+
+        List<ResourceObservation> observations = await dbContext.ResourceObservations
+            .AsNoTracking()
+            .Where(observation =>
+                observation.Algorithm == algorithm
+                && observation.DigestHex == normalizedDigest
+                && observation.ExpiresUtc > now
+                && observation.Node.LeaseExpiresUtc > now)
+            .Include(observation => observation.Content)
+            .ThenInclude(content => content.Identities)
+            .OrderByDescending(observation => observation.ObservedUtc)
+            .Take(directoryOptions.MaxResourceObservationsPerLookup)
+            .ToListAsync(cancellationToken);
+
+        if (observations.Count == 0)
+        {
+            return null;
+        }
+
+        ResourceCandidateResponse[] candidates = observations
+            .GroupBy(observation => observation.ContentId)
+            .Select(group =>
+            {
+                ResourceObservation newest = group
+                    .OrderByDescending(item => item.ObservedUtc)
+                    .First();
+                return new ResourceCandidateResponse(
+                    newest.ContentId,
+                    newest.Content.Size,
+                    group.Select(item => item.NodeId).Distinct().Count(),
+                    group.Max(item => item.ObservedUtc),
+                    newest.Content.Identities
+                        .Select(identity => new ContentIdentityContract
+                        {
+                            Algorithm = (int)identity.Algorithm,
+                            Digest = identity.DigestHex
+                        })
+                        .OrderBy(identity => identity.Algorithm)
+                        .ToArray());
+            })
+            .OrderByDescending(candidate => candidate.ObservationCount)
+            .ThenByDescending(candidate => candidate.LastObservedUtc)
+            .Take(maxCandidates)
+            .ToArray();
+
+        return new ResourceLookupResponse(
+            new ResourceKeyContract
+            {
+                Algorithm = algorithmValue,
+                Digest = normalizedDigest
+            },
+            now,
+            candidates);
+    }
+
     private static NormalizedAnnouncement NormalizeAnnouncement(
         ContentAnnouncementRequest request)
     {
