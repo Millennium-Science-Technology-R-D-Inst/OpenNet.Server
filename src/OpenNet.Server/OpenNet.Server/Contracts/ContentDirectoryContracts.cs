@@ -142,7 +142,8 @@ public sealed class ResourceAnnouncementRequest
     public ResourceKeyContract ResourceKey { get; init; } = new();
 
     [Required]
-    public ContentIdentityContract ContentIdentity { get; init; } = new();
+    public ContentIdentityContract ContentIdentity { get; init; } =
+        new() { Digest = string.Empty };
 }
 
 public sealed record ResourceCandidateResponse(
