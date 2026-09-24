@@ -258,4 +258,67 @@ public sealed class ResourceDirectoryTests
         Assert.IsTrue(lookup.Candidates[0].Identities.Any(
             identity => identity.Digest == secondRoot));
     }
+
+    [TestMethod]
+    public async Task InventoryRemovalInvalidatesResourceObservation()
+    {
+        await using SqliteConnection connection =
+            new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        string root = new string('7', 64);
+        string sha256 = new string('8', 64);
+        var context = await CreateRegisteredNodeAsync(
+            connection,
+            "resource-node-removal",
+            root,
+            sha256);
+        await using ContentDirectoryDbContext db = context.Db;
+
+        ResourceKeyContract key = new()
+        {
+            Algorithm = 1,
+            Digest = new string('d', 64)
+        };
+
+        Assert.IsTrue(await context.Service.AnnounceResourceAsync(
+            "resource-node-removal",
+            new ResourceAnnouncementRequest
+            {
+                LeaseId = context.Registration.LeaseId,
+                ResourceKey = key,
+                ContentIdentity = new ContentIdentityContract
+                {
+                    Algorithm = 1,
+                    Digest = root
+                }
+            },
+            CancellationToken.None));
+
+        Assert.IsNotNull(await context.Service.LookupResourceAsync(
+            1,
+            key.Digest,
+            null,
+            CancellationToken.None));
+
+        RegisterContentNodeResponse refreshed =
+            await context.Service.RegisterAsync(
+                new RegisterContentNodeRequest
+                {
+                    NodeId = "resource-node-removal",
+                    Generation = 2,
+                    RegistrationId = Guid.NewGuid(),
+                    PreviousLeaseId = context.Registration.LeaseId,
+                    Contents = []
+                },
+                IPAddress.Parse("203.0.113.50"),
+                CancellationToken.None);
+        Assert.AreEqual(0, refreshed.ContentCount);
+
+        Assert.IsNull(await context.Service.LookupResourceAsync(
+            1,
+            key.Digest,
+            null,
+            CancellationToken.None));
+    }
 }

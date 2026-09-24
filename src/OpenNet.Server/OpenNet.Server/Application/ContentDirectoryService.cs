@@ -222,6 +222,19 @@ public sealed class ContentDirectoryService(
 
         if (previousPresences.Count != 0)
         {
+            Guid[] removedContentIds = previousPresences.Keys.ToArray();
+            List<ResourceObservation> staleResourceObservations =
+                await dbContext.ResourceObservations
+                    .Where(observation =>
+                        observation.NodeId == nodeId
+                        && removedContentIds.Contains(observation.ContentId))
+                    .ToListAsync(cancellationToken);
+            if (staleResourceObservations.Count != 0)
+            {
+                dbContext.ResourceObservations.RemoveRange(
+                    staleResourceObservations);
+            }
+
             dbContext.ContentPresences.RemoveRange(previousPresences.Values);
         }
 
@@ -672,7 +685,10 @@ public sealed class ContentDirectoryService(
                 observation.Algorithm == algorithm
                 && observation.DigestHex == normalizedDigest
                 && observation.ExpiresUtc > now
-                && observation.Node.LeaseExpiresUtc > now)
+                && observation.Node.LeaseExpiresUtc > now
+                && dbContext.ContentPresences.Any(presence =>
+                    presence.NodeId == observation.NodeId
+                    && presence.ContentId == observation.ContentId))
             .Include(observation => observation.Content)
             .ThenInclude(content => content.Identities)
             .OrderByDescending(observation => observation.ObservedUtc)
