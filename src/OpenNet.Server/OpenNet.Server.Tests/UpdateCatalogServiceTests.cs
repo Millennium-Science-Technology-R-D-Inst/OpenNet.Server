@@ -52,7 +52,7 @@ public sealed class UpdateCatalogServiceTests
         params UpdatePackageOptions[] packages)
     {
         return new UpdateCatalogService(
-            Options.Create(new UpdateCatalogOptions
+            Microsoft.Extensions.Options.Options.Create(new UpdateCatalogOptions
             {
                 Packages = packages
             }));

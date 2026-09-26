@@ -17,6 +17,11 @@ public static class Program
             .ValidateDataAnnotations()
             .ValidateOnStart();
         builder.Services
+            .AddOptions<ContentDirectoryOptions>()
+            .BindConfiguration(ContentDirectoryOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        builder.Services
             .AddOptions<UpdateCatalogOptions>()
             .BindConfiguration(UpdateCatalogOptions.SectionName)
             .ValidateDataAnnotations()
@@ -31,29 +36,26 @@ public static class Program
             builder.Configuration["DatabaseProvider"] ?? "Sqlite";
 
         builder.Services.AddDbContext<TraversalDbContext>(
-            options =>
-            {
-                if (databaseProvider.Equals("MySql", StringComparison.OrdinalIgnoreCase))
-                {
-                    options.UseMySQL(connectionString);
-                }
-                else if (databaseProvider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
-                {
-                    options.UseSqlite(connectionString);
-                }
-                else
-                {
-                    throw new InvalidOperationException(
-                        $"Unsupported DatabaseProvider '{databaseProvider}'. "
-                        + "Use 'Sqlite' or 'MySql'.");
-                }
-            });
+            options => ConfigureDatabase(options, databaseProvider, connectionString));
+
+        string? configuredContentConnectionString =
+            builder.Configuration.GetConnectionString("ContentDirectory");
+        string contentConnectionString = configuredContentConnectionString
+            ?? (databaseProvider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)
+                ? "Data Source=opennet-content.db"
+                : throw new InvalidOperationException(
+                    "ConnectionStrings:ContentDirectory must be configured when DatabaseProvider is MySql."));
+        builder.Services.AddDbContext<ContentDirectoryDbContext>(
+            options => ConfigureDatabase(options, databaseProvider, contentConnectionString));
         builder.Services.AddScoped<ITraversalServerRepository, TraversalServerRepository>();
         builder.Services.AddScoped<TraversalDirectoryService>();
+        builder.Services.AddScoped<ContentDirectoryService>();
+        builder.Services.AddHostedService<ContentDirectoryCleanupService>();
         builder.Services.AddSingleton<UpdateCatalogService>();
         builder.Services.AddMemoryCache();
         builder.Services.AddHealthChecks()
-            .AddDbContextCheck<TraversalDbContext>("traversal-database");
+            .AddDbContextCheck<TraversalDbContext>("traversal-database")
+            .AddDbContextCheck<ContentDirectoryDbContext>("content-directory-database");
         builder.Services.AddControllers();
         builder.Services.AddOpenApi();
 
@@ -69,6 +71,27 @@ public static class Program
         app.MapHealthChecks("/health");
 
         await TraversalDatabaseInitializer.InitializeAsync(app.Services);
+        await ContentDirectoryDatabaseInitializer.InitializeAsync(app.Services);
         await app.RunAsync();
+    }
+
+    private static void ConfigureDatabase(
+        DbContextOptionsBuilder options,
+        string databaseProvider,
+        string connectionString)
+    {
+        if (databaseProvider.Equals("MySql", StringComparison.OrdinalIgnoreCase))
+        {
+            options.UseMySQL(connectionString);
+        }
+        else if (databaseProvider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+        {
+            options.UseSqlite(connectionString);
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"Unsupported DatabaseProvider '{databaseProvider}'. Use 'Sqlite' or 'MySql'.");
+        }
     }
 }
